@@ -1,65 +1,84 @@
-import random, discord, requests, os
- 
-from PIL import Image
+import random
+import discord
+import requests
+import os
 
-from animeApi import randomCharacter
+from dotenv import load_dotenv
+
+from animeApi import *
+from cardsCore import *
 
 client = discord.Client()
+load_dotenv()
+
 
 @client.event
 async def on_ready():
-  print('We have logged in as {0.user}'.format(client))
+    print('We have logged in as {0.user}'.format(client))
 
 
 @client.event
 async def on_message(message):
 
-  if message.author == client.user:
-    return
+    if message.author == client.user:
+        return
 
-  if message.content.startswith('-hello'):
-    await message.channel.send(message.author.mention + ' Hello!')
+    if message.content.startswith('-hello'):
+        await message.channel.send(message.author.mention + ' Hello!')
 
-  if message.content.startswith('-pull'):
+    if message.content.startswith('-apiStatistics'):
 
-    i = 0
-    charactersImg = {}
-    msg = discord.Embed (
-        title="Here is your pull master.", 
-        description= message.author.mention, 
-        color=0xc9c9c9
-      )
+        statistics = getStatistics()
 
-    while i < 3:
-      character = randomCharacter(random.randint(0,9999))
-      msg.add_field (
-      name= str(character['firstName'])+' '+str(character['lastName']), 
-      value= character['media'], 
-      inline= True
-      )
-      charactersImg["img-{0}".format(i)] = character['image']
-      i += 1
+        if not statistics:
+            embed = discord.Embed(
+                title='Statistics command error', description='An error has ocurred, please try again.', color=0xfc2803)
+            await message.channel.send(embed=embed)
 
-    image1 = Image.open(requests.get(charactersImg['img-0'], stream=True).raw)
-    image2 = Image.open(requests.get(charactersImg['img-1'], stream=True).raw)
-    image3 = Image.open(requests.get(charactersImg['img-2'], stream=True).raw)
+        else:
+            statistics = statistics.json()
 
-    image1 = image1.resize((200, 250))
-    image2 = image2.resize((200, 250))
-    image3 = image3.resize((200, 250))
+            embed = discord.Embed(
+                title='Anilist API Statistics', color=0xf56c42)
+            embed.add_field(name='Last character found', value='#'+str(statistics['data']['Character']['id'])+' - '+str(
+                statistics['data']['Character']['name']['full']), inline=False)
+            embed.add_field(name='Last Anime found', value='#'+str(statistics['data']['Anime']['id'])+' - '+str(
+                statistics['data']['Anime']['title']['romaji']), inline=False)
+            embed.add_field(name='Last Manga found', value='#'+str(statistics['data']['Manga']['id'])+' - '+str(
+                statistics['data']['Manga']['title']['romaji']), inline=False)
+            embed.add_field(name='Total Characters', value=str(
+                statistics['data']['SiteStatistics']['characters']['nodes'][-1]['count']), inline=True)
+            embed.add_field(name='Total Animes', value=str(
+                statistics['data']['SiteStatistics']['anime']['nodes'][-1]['count']), inline=True)
+            embed.add_field(name='Total Mangas', value=str(
+                statistics['data']['SiteStatistics']['manga']['nodes'][-1]['count']), inline=True)
 
-    image1_size = image1.size
-    image2_size = image2.size
+            await message.channel.send(embed=embed)
 
-    new_image = Image.new('RGB',(3*image1_size[0], image1_size[1]), (250,250,250))
-    new_image.paste(image1,(0,0))
-    new_image.paste(image2,(image1_size[0],0))    
-    new_image.paste(image3,(image2_size[0],0))    
-    new_image.save("images/merged_image.jpg","JPEG")
-    
-    msg.set_image(new_image)
+    if message.content.startswith('-pull'):
 
-    await message.channel.send(embed=msg)
+        i = 0
+        attemps = 0
+        characters = []
 
+        while i < 3:
+            character = getCharacter(random.randint(0, 72492))
+            if not character:
+                if attemps == 10:
+                    break
+                else:
+                    attemps += 1
+            else:
+                characters.append(character.copy())
+                i += 1
+
+        if attemps != 10:
+            pullImage = pullImages(characters)
+            file = discord.File(pullImage, filename='pull.png')
+            await message.channel.send('Here is your pull master ' + message.author.mention, file=file)
+        else:
+            embed = discord.Embed(
+                title='Pull command error', description='An error has ocurred, please try again.', color=0xfc2803)
+            await message.channel.send(embed=embed)
 
 client.run(os.getenv('TOKEN'))
